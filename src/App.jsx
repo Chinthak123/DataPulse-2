@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import {
   Activity, AlertTriangle, ArrowDownRight, ArrowUpRight, BarChart3, BrainCircuit,
   CheckCircle2, ChevronRight, Download, LayoutDashboard, LogIn, LogOut, Search,
-  Sparkles, Table2, Upload, UserPlus, Users, X
+  Moon, Sparkles, Sun, Table2, Upload, UserPlus, Users, X
 } from 'lucide-react';
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart,
@@ -34,6 +34,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(() => typeof window !== 'undefined' ? localStorage.getItem('datapulse-user') || '' : '');
   const [authForm, setAuthForm] = useState({ name: '', email: '', password: '' });
   const [authError, setAuthError] = useState('');
+  const [darkMode, setDarkMode] = useState(() => typeof window !== 'undefined' && localStorage.getItem('datapulse-theme') === 'dark');
   const fileInputRef = useRef(null);
 
   const numericKeys = useMemo(() => Object.keys(chartData[0] || {}).filter((key) =>
@@ -123,6 +124,14 @@ export default function App() {
     setCurrentUser('');
   };
 
+  const toggleTheme = () => {
+    setDarkMode((isDark) => {
+      const nextMode = !isDark;
+      localStorage.setItem('datapulse-theme', nextMode ? 'dark' : 'light');
+      return nextMode;
+    });
+  };
+
   const navItems = [
     { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
     { id: 'upload', label: 'Import data', icon: Upload },
@@ -131,11 +140,11 @@ export default function App() {
   ];
 
   if (!currentUser) {
-    return <AuthPage mode={authMode || 'login'} form={authForm} error={authError} onModeChange={openAuth} onChange={(field, value) => setAuthForm((form) => ({ ...form, [field]: value }))} onSubmit={handleAuthSubmit} />;
+    return <AuthPage darkMode={darkMode} onToggleTheme={toggleTheme} mode={authMode || 'login'} form={authForm} error={authError} onModeChange={openAuth} onChange={(field, value) => setAuthForm((form) => ({ ...form, [field]: value }))} onSubmit={handleAuthSubmit} />;
   }
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${darkMode ? 'dark-mode' : ''}`}>
       <aside className="sidebar">
         <div className="brand"><div className="brand-mark"><Activity size={19} /></div><span>DataPulse</span><small>AI</small></div>
         <div className="workspace-label">WORKSPACE</div>
@@ -150,7 +159,7 @@ export default function App() {
       <main className="main-content">
         <header className="topbar">
           <div><div className="breadcrumb">Workspace <ChevronRight size={13} /> {activeTab === 'dashboard' ? 'Overview' : navItems.find((item) => item.id === activeTab)?.label}</div><h1>{activeTab === 'dashboard' ? 'Data overview' : navItems.find((item) => item.id === activeTab)?.label}</h1></div>
-          <div className="topbar-actions"><span className="source-pill"><span className="status-dot" />{uploadedFileName}</span>{currentUser ? <span className="signed-in-label">Signed in as <strong>{currentUser}</strong></span> : <><button className="button button-ghost" onClick={() => openAuth('login')}><LogIn size={15} /> Log in</button><button className="button button-primary" onClick={() => openAuth('register')}><UserPlus size={15} /> Register</button></>}<button className="button button-primary" onClick={handleDownloadReport}><Download size={15} /> Export</button></div>
+          <div className="topbar-actions"><span className="source-pill"><span className="status-dot" />{uploadedFileName}</span><button className="theme-toggle" aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'} onClick={toggleTheme}>{darkMode ? <Sun size={16} /> : <Moon size={16} />}</button>{currentUser ? <span className="signed-in-label">Signed in as <strong>{currentUser}</strong></span> : <><button className="button button-ghost" onClick={() => openAuth('login')}><LogIn size={15} /> Log in</button><button className="button button-primary" onClick={() => openAuth('register')}><UserPlus size={15} /> Register</button></>}<button className="button button-primary" onClick={handleDownloadReport}><Download size={15} /> Export</button></div>
         </header>
 
         <div className="content">
@@ -185,10 +194,11 @@ function AuthModal({ mode, form, error, onClose, onModeChange, onChange, onSubmi
   </div>;
 }
 
-function AuthPage({ mode, form, error, onModeChange, onChange, onSubmit }) {
+function AuthPage({ darkMode, onToggleTheme, mode, form, error, onModeChange, onChange, onSubmit }) {
   const isRegister = mode === 'register';
-  return <main className="auth-page">
+  return <main className={`auth-page ${darkMode ? 'dark-mode' : ''}`}>
     <div className="auth-page-decoration"><div className="auth-orb orb-one" /><div className="auth-orb orb-two" /><div className="auth-grid" /></div>
+    <button className="auth-theme-toggle theme-toggle" aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'} onClick={onToggleTheme}>{darkMode ? <Sun size={17} /> : <Moon size={17} />}<span>{darkMode ? 'Light mode' : 'Dark mode'}</span></button>
     <section className="auth-page-card">
       <div className="auth-brand"><div className="brand-mark"><Activity size={19} /></div><span>DataPulse <b>AI</b></span></div>
       <div className="auth-heading"><div className="eyebrow"><Activity size={13} /> DATA INTELLIGENCE WORKSPACE</div><h2>{isRegister ? 'Create your account' : 'Welcome to DataPulse'}</h2><p>{isRegister ? 'Build a clearer view of your data in minutes.' : 'Sign in to explore your data and uncover useful insights.'}</p></div>
