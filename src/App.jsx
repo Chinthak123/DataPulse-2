@@ -1,254 +1,235 @@
-import React, { useState, useRef } from 'react';
-import { 
-  BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid 
-} from 'recharts';
-import { 
-  LayoutDashboard, BrainCircuit, AlertTriangle, Download, Search, TrendingUp, Users, DollarSign, Activity, Upload, FileSpreadsheet 
+import React, { useMemo, useRef, useState } from 'react';
+import {
+  Activity, AlertTriangle, ArrowDownRight, ArrowUpRight, BarChart3, BrainCircuit,
+  CheckCircle2, ChevronRight, Download, LayoutDashboard, LogIn, LogOut, Search,
+  Sparkles, Table2, Upload, UserPlus, Users, X
 } from 'lucide-react';
+import {
+  Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart,
+  Pie, PieChart, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis
+} from 'recharts';
 import * as XLSX from 'xlsx';
 
 const defaultData = [
-  { name: 'Jan', revenue: 4000, users: 2400 },
-  { name: 'Feb', revenue: 3000, users: 1398 },
-  { name: 'Mar', revenue: 2000, users: 9800 },
-  { name: 'Apr', revenue: 2780, users: 3908 },
-  { name: 'May', revenue: 1890, users: 4800 },
-  { name: 'Jun', revenue: 2390, users: 3800 },
+  { name: 'Jan', revenue: 4000, users: 2400 }, { name: 'Feb', revenue: 3000, users: 1398 },
+  { name: 'Mar', revenue: 2000, users: 9800 }, { name: 'Apr', revenue: 2780, users: 3908 },
+  { name: 'May', revenue: 1890, users: 4800 }, { name: 'Jun', revenue: 2390, users: 3800 },
 ];
+const palette = ['#249b8b', '#5b7cfa', '#f2a65a', '#e76f51', '#8b6fc8', '#4ca6b5'];
+const tooltipStyle = { background: '#fff', border: '1px solid #d9e1e7', borderRadius: 8, boxShadow: '0 8px 24px #1b2b3a14' };
+
+const formatValue = (value) => typeof value === 'number' ? value.toLocaleString() : value;
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [chartData, setChartData] = useState(defaultData);
   const [uploadedFileName, setUploadedFileName] = useState('Default Mock Data');
-  
-  
   const [xAxisKey, setXAxisKey] = useState('name');
   const [barDataKey, setBarDataKey] = useState('revenue');
   const [lineDataKey, setLineDataKey] = useState('users');
-
   const [searchQuery, setSearchQuery] = useState('');
   const [aiResponse, setAiResponse] = useState('');
+  const [uploadMessage, setUploadMessage] = useState('');
+  const [authMode, setAuthMode] = useState(null);
+  const [currentUser, setCurrentUser] = useState(() => typeof window !== 'undefined' ? localStorage.getItem('datapulse-user') || '' : '');
+  const [authForm, setAuthForm] = useState({ name: '', email: '', password: '' });
+  const [authError, setAuthError] = useState('');
   const fileInputRef = useRef(null);
 
-  const handleFileUpload = (e) => {
-    const file = e.target.files[0];
+  const numericKeys = useMemo(() => Object.keys(chartData[0] || {}).filter((key) =>
+    chartData.some((row) => typeof row[key] === 'number')), [chartData]);
+  const categoryData = useMemo(() => {
+    const key = xAxisKey;
+    return chartData.reduce((result, row) => {
+      const label = String(row[key] ?? 'Unknown');
+      const current = result.find((item) => item.name === label);
+      if (current) current.value += 1;
+      else result.push({ name: label, value: 1 });
+      return result;
+    }, []).slice(0, 8);
+  }, [chartData, xAxisKey]);
+  const total = useMemo(() => chartData.reduce((sum, row) => sum + (Number(row[barDataKey]) || 0), 0), [chartData, barDataKey]);
+  const average = chartData.length ? total / chartData.length : 0;
+  const trend = chartData.length > 1 ? Number(chartData.at(-1)?.[barDataKey] || 0) - Number(chartData.at(-2)?.[barDataKey] || 0) : 0;
+
+  const handleFileUpload = (event) => {
+    const file = event.target.files?.[0];
     if (!file) return;
-
-    setUploadedFileName(file.name);
     const reader = new FileReader();
-
-    reader.onload = (event) => {
-      const binaryStr = event.target.result;
-      const workbook = XLSX.read(binaryStr, { type: 'binary' });
-      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-      const parsedData = XLSX.utils.sheet_to_json(worksheet);
-
-      if (parsedData.length > 0) {
-        const firstRow = parsedData[0];
-        const keys = Object.keys(firstRow);
-
-        
-        const stringKey = keys.find(k => typeof firstRow[k] === 'string') || keys[0];
-        const numericKeys = keys.filter(k => typeof firstRow[k] === 'number');
-
-        setXAxisKey(stringKey);
-        setBarDataKey(numericKeys[0] || keys[1] || stringKey);
-        setLineDataKey(numericKeys[1] || numericKeys[0] || keys[2] || stringKey);
-
-        
-        setChartData(parsedData.slice(0, 50));
+    reader.onload = (loadEvent) => {
+      try {
+        const workbook = XLSX.read(loadEvent.target.result, { type: 'array' });
+        const parsedData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { defval: '' });
+        if (!parsedData.length) {
+          setUploadMessage('The selected file does not contain any rows.');
+          return;
+        }
+        const keys = Object.keys(parsedData[0]);
+        const numeric = keys.filter((key) => parsedData.some((row) => typeof row[key] === 'number'));
+        const category = keys.find((key) => !numeric.includes(key)) || keys[0];
+        setChartData(parsedData.slice(0, 100));
+        setUploadedFileName(file.name);
+        setXAxisKey(category);
+        setBarDataKey(numeric[0] || keys[1] || keys[0]);
+        setLineDataKey(numeric[1] || numeric[0] || keys[2] || keys[0]);
+        setUploadMessage(`${parsedData.length.toLocaleString()} rows loaded. Five visualizations are ready.`);
         setActiveTab('dashboard');
-        alert(`Successfully loaded ${parsedData.length} rows from ${file.name}! Charts updated.`);
-      } else {
-        alert("The uploaded file appears to be empty.");
+      } catch {
+        setUploadMessage('We could not read this file. Please upload a CSV or Excel workbook.');
       }
     };
-
-    reader.readAsBinaryString(file);
+    reader.readAsArrayBuffer(file);
+    event.target.value = '';
   };
 
-  const handleAiSearch = (e) => {
-    e.preventDefault();
-    if (!searchQuery) return;
-    setAiResponse(`AI Insight: Analyzed dataset "${uploadedFileName}". Active records indicate normal distribution patterns across ${xAxisKey}.`);
+  const handleAiSearch = (event) => {
+    event.preventDefault();
+    if (!searchQuery.trim()) return;
+    setAiResponse(`Based on ${chartData.length} rows, ${barDataKey} averages ${formatValue(Math.round(average))}. The latest period is ${trend >= 0 ? 'up' : 'down'} by ${formatValue(Math.abs(trend))}.`);
   };
 
   const handleDownloadReport = () => {
-    if (chartData.length === 0) return;
-    const keys = Object.keys(chartData[0]);
-    const csvRows = [keys.join(','), ...chartData.map(row => keys.map(k => row[k] || '').join(','))];
-    const blob = new Blob([csvRows.join("\n")], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'datapulse_export.csv';
-    a.click();
+    const keys = Object.keys(chartData[0] || {});
+    const csvRows = [keys.join(','), ...chartData.map((row) => keys.map((key) => JSON.stringify(row[key] ?? '')).join(','))];
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(new Blob([csvRows.join('\n')], { type: 'text/csv' }));
+    link.download = 'datapulse-export.csv';
+    link.click();
+    URL.revokeObjectURL(link.href);
   };
 
+  const openAuth = (mode) => {
+    setAuthMode(mode);
+    setAuthError('');
+    setAuthForm({ name: '', email: '', password: '' });
+  };
+
+  const handleAuthSubmit = (event) => {
+    event.preventDefault();
+    if (authForm.password.length < 6) {
+      setAuthError('Use a password with at least 6 characters.');
+      return;
+    }
+    const displayName = authMode === 'register'
+      ? authForm.name.trim() || authForm.email.split('@')[0]
+      : authForm.email.split('@')[0];
+    localStorage.setItem('datapulse-user', displayName);
+    setCurrentUser(displayName);
+    setAuthMode(null);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('datapulse-user');
+    setCurrentUser('');
+  };
+
+  const navItems = [
+    { id: 'dashboard', label: 'Overview', icon: LayoutDashboard },
+    { id: 'upload', label: 'Import data', icon: Upload },
+    { id: 'ai-insights', label: 'Insights', icon: BrainCircuit },
+    { id: 'alerts', label: 'Data quality', icon: AlertTriangle },
+  ];
+
+  if (!currentUser) {
+    return <AuthPage mode={authMode || 'login'} form={authForm} error={authError} onModeChange={openAuth} onChange={(field, value) => setAuthForm((form) => ({ ...form, [field]: value }))} onSubmit={handleAuthSubmit} />;
+  }
+
   return (
-    <div className="flex h-screen bg-slate-900 text-slate-100 font-sans overflow-hidden">
-      <aside className="w-64 bg-slate-800 border-r border-slate-700 flex flex-col">
-        <div className="p-6 flex items-center space-x-3 border-b border-slate-700">
-          <Activity className="h-8 w-8 text-indigo-400" />
-          <span className="text-xl font-bold tracking-wider">DataPulse AI</span>
-        </div>
-        
-        <nav className="flex-1 p-4 space-y-2">
-          <button onClick={() => setActiveTab('dashboard')} className={`flex items-center space-x-3 w-full px-4 py-3 rounded-lg transition ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-700 hover:text-white'}`}>
-            <LayoutDashboard className="h-5 w-5" />
-            <span>Dashboard</span>
+    <div className="app-shell">
+      <aside className="sidebar">
+        <div className="brand"><div className="brand-mark"><Activity size={19} /></div><span>DataPulse</span><small>AI</small></div>
+        <div className="workspace-label">WORKSPACE</div>
+        <nav>{navItems.map(({ id, label, icon: Icon }) => (
+          <button key={id} className={`nav-item ${activeTab === id ? 'active' : ''}`} onClick={() => setActiveTab(id)}>
+            <Icon size={17} /><span>{label}</span>{activeTab === id && <ChevronRight size={14} className="nav-arrow" />}
           </button>
-          <button onClick={() => setActiveTab('upload')} className={`flex items-center space-x-3 w-full px-4 py-3 rounded-lg transition ${activeTab === 'upload' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-700 hover:text-white'}`}>
-            <Upload className="h-5 w-5" />
-            <span>Upload Dataset</span>
-          </button>
-          <button onClick={() => setActiveTab('ai-insights')} className={`flex items-center space-x-3 w-full px-4 py-3 rounded-lg transition ${activeTab === 'ai-insights' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-700 hover:text-white'}`}>
-            <BrainCircuit className="h-5 w-5" />
-            <span>AI Query & Insights</span>
-          </button>
-          <button onClick={() => setActiveTab('alerts')} className={`flex items-center space-x-3 w-full px-4 py-3 rounded-lg transition ${activeTab === 'alerts' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-700 hover:text-white'}`}>
-            <AlertTriangle className="h-5 w-5" />
-            <span>Anomaly Alerts</span>
-          </button>
-        </nav>
+        ))}</nav>
+        <div className="sidebar-footer"><div className="status-dot" />Dataset connected{currentUser ? <div className="user-chip"><span>{currentUser.slice(0, 2).toUpperCase()}</span><div><strong>{currentUser}</strong><small>Signed in</small></div><button className="logout-button" aria-label="Log out" onClick={handleLogout}><LogOut size={14} /></button></div> : <button className="sidebar-auth-link" onClick={() => openAuth('login')}>Sign in to save your work <ChevronRight size={13} /></button>}</div>
       </aside>
 
-      <main className="flex-1 flex flex-col overflow-y-auto">
-        <header className="h-16 bg-slate-800 border-b border-slate-700 flex items-center justify-between px-8">
-          <div className="flex items-center space-x-3">
-            <h1 className="text-lg font-semibold capitalize">{activeTab.replace('-', ' ')} View</h1>
-            <span className="text-xs bg-slate-700 px-3 py-1 rounded-full text-slate-300">
-              Active Source: <strong className="text-indigo-400">{uploadedFileName}</strong>
-            </span>
-          </div>
-          <button onClick={handleDownloadReport} className="flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded-lg text-sm font-medium transition cursor-pointer">
-            <Download className="h-4 w-4" />
-            <span>Export CSV</span>
-          </button>
+      <main className="main-content">
+        <header className="topbar">
+          <div><div className="breadcrumb">Workspace <ChevronRight size={13} /> {activeTab === 'dashboard' ? 'Overview' : navItems.find((item) => item.id === activeTab)?.label}</div><h1>{activeTab === 'dashboard' ? 'Data overview' : navItems.find((item) => item.id === activeTab)?.label}</h1></div>
+          <div className="topbar-actions"><span className="source-pill"><span className="status-dot" />{uploadedFileName}</span>{currentUser ? <span className="signed-in-label">Signed in as <strong>{currentUser}</strong></span> : <><button className="button button-ghost" onClick={() => openAuth('login')}><LogIn size={15} /> Log in</button><button className="button button-primary" onClick={() => openAuth('register')}><UserPlus size={15} /> Register</button></>}<button className="button button-primary" onClick={handleDownloadReport}><Download size={15} /> Export</button></div>
         </header>
 
-        <div className="p-8 space-y-8">
-          {activeTab === 'dashboard' && (
-            <>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-sm flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-slate-400 font-medium">Dataset Records</p>
-                    <h3 className="text-2xl font-bold mt-1">{chartData.length} Rows Rendered</h3>
-                    <span className="text-xs text-emerald-400 font-semibold flex items-center mt-1">
-                      <TrendingUp className="h-3 w-3 mr-1" /> Active mapping enabled
-                    </span>
-                  </div>
-                  <div className="p-3 bg-indigo-500/10 text-indigo-400 rounded-lg"><DollarSign className="h-6 w-6" /></div>
-                </div>
-
-                <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-sm flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-slate-400 font-medium">X-Axis Mapping</p>
-                    <h3 className="text-xl font-bold mt-1 text-indigo-300">{xAxisKey}</h3>
-                    <span className="text-xs text-blue-400 font-semibold flex items-center mt-1"><Users className="h-3 w-3 mr-1" /> Category field</span>
-                  </div>
-                  <div className="p-3 bg-blue-500/10 text-blue-400 rounded-lg"><FileSpreadsheet className="h-6 w-6" /></div>
-                </div>
-
-                <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 shadow-sm flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-slate-400 font-medium">Metrics Mapped</p>
-                    <h3 className="text-sm font-bold mt-1 text-slate-200">{barDataKey} & {lineDataKey}</h3>
-                    <span className="text-xs text-purple-400 font-semibold flex items-center mt-1"><Activity className="h-3 w-3 mr-1" /> Live values</span>
-                  </div>
-                  <div className="p-3 bg-purple-500/10 text-purple-400 rounded-lg"><Activity className="h-6 w-6" /></div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="bg-slate-800 p-6 rounded-xl border border-slate-700">
-                  <h3 className="text-md font-semibold mb-4 text-slate-300">Bar View: {barDataKey}</h3>
-                  <div className="h-72">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={chartData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                        <XAxis dataKey={xAxisKey} stroke="#94a3b8" tick={{fontSize: 10}} />
-                        <YAxis stroke="#94a3b8" />
-                        <Tooltip contentStyle={{ backgroundColor: '#1e293b', borderColor: '#475569', color: '#fff' }} />
-                        <Bar dataKey={barDataKey} fill="#6366f1" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-                <div className="bg-slate-800 p-6 rounded-xl border border-slate-700">
-                  <h3 className="text-md font-semibold mb-4 text-slate-300">Line View: {lineDataKey}</h3>
-                  <div className="h-72">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={chartData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                        <XAxis dataKey={xAxisKey} stroke="#94a3b8" tick={{fontSize: 10}} />
-                        <YAxis stroke="#94a3b8" />
-                        <Tooltip contentStyle={{ backgroundColor: '#1e293b', borderColor: '#475569', color: '#fff' }} />
-                        <Line type="monotone" dataKey={lineDataKey} stroke="#38bdf8" strokeWidth={3} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-
-          {activeTab === 'upload' && (
-            <div className="bg-slate-800 p-8 rounded-xl border border-slate-700 max-w-xl mx-auto text-center space-y-6">
-              <div className="mx-auto w-16 h-16 bg-indigo-500/10 text-indigo-400 rounded-full flex items-center justify-center">
-                <FileSpreadsheet className="h-8 w-8" />
-              </div>
-              <div>
-                <h2 className="text-xl font-bold">Upload Custom Dataset</h2>
-                <p className="text-sm text-slate-400 mt-1">Supports CSV and Excel (.xlsx) files instantly.</p>
-              </div>
-              <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".csv, .xlsx, .xls" className="hidden" />
-              <button onClick={() => fileInputRef.current.click()} className="w-full bg-indigo-600 hover:bg-indigo-500 py-3 rounded-lg font-medium transition cursor-pointer flex items-center justify-center space-x-2">
-                <Upload className="h-4 w-4" />
-                <span>Browse & Select Spreadsheet File</span>
-              </button>
-            </div>
-          )}
-
-          {activeTab === 'ai-insights' && (
-            <div className="bg-slate-800 p-8 rounded-xl border border-slate-700 max-w-2xl mx-auto space-y-6">
-              <div className="flex items-center space-x-3">
-                <BrainCircuit className="h-8 w-8 text-indigo-400" />
-                <div>
-                  <h2 className="text-xl font-bold">Ask DataPulse AI</h2>
-                  <p className="text-sm text-slate-400">Query your active dataset using normal English questions.</p>
-                </div>
-              </div>
-              <form onSubmit={handleAiSearch} className="flex space-x-3">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
-                  <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="e.g., Summarize trends..." className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-10 pr-4 py-3 text-sm focus:outline-none focus:border-indigo-500" />
-                </div>
-                <button type="submit" className="bg-indigo-600 hover:bg-indigo-500 px-6 py-3 rounded-lg text-sm font-medium transition cursor-pointer">Ask AI</button>
-              </form>
-              {aiResponse && <div className="p-4 bg-slate-900 border border-indigo-500/30 rounded-lg text-indigo-200 text-sm">{aiResponse}</div>}
-            </div>
-          )}
-
-          {activeTab === 'alerts' && (
-            <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-4 max-w-3xl mx-auto">
-              <div className="flex items-center space-x-3 mb-6">
-                <AlertTriangle className="h-6 w-6 text-amber-400" />
-                <h2 className="text-lg font-bold">Anomaly & Error Alert Center</h2>
-              </div>
-              <div className="p-4 bg-slate-900 border-l-4 border-amber-500 rounded-r-lg flex justify-between items-center">
-                <div>
-                  <h4 className="font-semibold text-amber-400">Data Variance Alert</h4>
-                  <p className="text-xs text-slate-400 mt-1">Uploaded dataset format parsed successfully into Recharts.</p>
-                </div>
-                <span className="text-xs bg-amber-500/10 text-amber-400 px-2.5 py-1 rounded-full font-medium">Warning</span>
-              </div>
-            </div>
-          )}
+        <div className="content">
+          {activeTab === 'dashboard' && <Dashboard data={chartData} xAxisKey={xAxisKey} barDataKey={barDataKey} lineDataKey={lineDataKey} numericKeys={numericKeys} categoryData={categoryData} total={total} average={average} trend={trend} />}
+          {activeTab === 'upload' && <section className="panel upload-panel"><div className="upload-icon"><Upload size={25} /></div><h2>Import a dataset</h2><p>Bring in a CSV or Excel file to automatically generate five visualizations and actionable insights.</p><input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" onChange={handleFileUpload} hidden /><button className="button button-primary" onClick={() => fileInputRef.current?.click()}><Upload size={16} /> Choose file</button>{uploadMessage && <div className="notice"><CheckCircle2 size={16} />{uploadMessage}</div>}</section>}
+          {activeTab === 'ai-insights' && <section className="insights-page"><div className="page-heading"><div className="eyebrow"><Sparkles size={14} /> AI ASSISTANT</div><h2>Ask questions about your data</h2><p>Get a plain-English summary from the active dataset.</p></div><form className="search-box" onSubmit={handleAiSearch}><Search size={18} /><input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Try “What is the latest trend?”" /><button className="button button-primary" type="submit">Ask AI</button></form>{aiResponse && <div className="ai-answer"><Sparkles size={20} /><div><strong>DataPulse insight</strong><p>{aiResponse}</p></div><button className="icon-button" onClick={() => setAiResponse('')}><X size={16} /></button></div>}<InsightCards data={chartData} barDataKey={barDataKey} lineDataKey={lineDataKey} average={average} trend={trend} /></section>}
+          {activeTab === 'alerts' && <section className="panel quality-panel"><div className="page-heading"><div className="eyebrow"><CheckCircle2 size={14} /> DATA QUALITY</div><h2>Dataset health</h2><p>A quick check of the currently loaded data.</p></div><div className="quality-row"><CheckCircle2 size={22} /><div><strong>All systems nominal</strong><p>{chartData.length} rows and {Object.keys(chartData[0] || {}).length} columns are available for analysis.</p></div><span className="quality-badge">Healthy</span></div></section>}
         </div>
       </main>
+      {authMode && <AuthModal mode={authMode} form={authForm} error={authError} onClose={() => setAuthMode(null)} onModeChange={openAuth} onChange={(field, value) => setAuthForm((form) => ({ ...form, [field]: value }))} onSubmit={handleAuthSubmit} />}
     </div>
   );
+}
+
+function AuthModal({ mode, form, error, onClose, onModeChange, onChange, onSubmit }) {
+  const isRegister = mode === 'register';
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+    <section className="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+      <button className="modal-close icon-button" aria-label="Close authentication dialog" onClick={onClose}><X size={17} /></button>
+      <div className="auth-brand"><div className="brand-mark"><Activity size={19} /></div><span>DataPulse <b>AI</b></span></div>
+      <div className="auth-heading"><div className="eyebrow"><Activity size={13} /> YOUR DATA WORKSPACE</div><h2 id="auth-title">{isRegister ? 'Create your account' : 'Welcome back'}</h2><p>{isRegister ? 'Start turning your data into useful decisions.' : 'Sign in to access your workspace and insights.'}</p></div>
+      <form className="auth-form" onSubmit={onSubmit}>
+        {isRegister && <label>Full name<input required value={form.name} onChange={(event) => onChange('name', event.target.value)} placeholder="Your name" /></label>}
+        <label>Email address<input required type="email" value={form.email} onChange={(event) => onChange('email', event.target.value)} placeholder="you@company.com" /></label>
+        <label>Password<input required type="password" minLength="6" value={form.password} onChange={(event) => onChange('password', event.target.value)} placeholder="At least 6 characters" /></label>
+        {error && <p className="auth-error">{error}</p>}
+        <button className="button button-primary auth-submit" type="submit">{isRegister ? 'Create account' : 'Log in'} <ChevronRight size={15} /></button>
+      </form>
+      <p className="auth-switch">{isRegister ? 'Already have an account?' : 'New to DataPulse?'} <button onClick={() => onModeChange(isRegister ? 'login' : 'register')}>{isRegister ? 'Log in' : 'Create an account'}</button></p>
+      <small className="auth-note">Demo mode: account details stay in this browser only.</small>
+    </section>
+  </div>;
+}
+
+function AuthPage({ mode, form, error, onModeChange, onChange, onSubmit }) {
+  const isRegister = mode === 'register';
+  return <main className="auth-page">
+    <div className="auth-page-decoration"><div className="auth-orb orb-one" /><div className="auth-orb orb-two" /><div className="auth-grid" /></div>
+    <section className="auth-page-card">
+      <div className="auth-brand"><div className="brand-mark"><Activity size={19} /></div><span>DataPulse <b>AI</b></span></div>
+      <div className="auth-heading"><div className="eyebrow"><Activity size={13} /> DATA INTELLIGENCE WORKSPACE</div><h2>{isRegister ? 'Create your account' : 'Welcome to DataPulse'}</h2><p>{isRegister ? 'Build a clearer view of your data in minutes.' : 'Sign in to explore your data and uncover useful insights.'}</p></div>
+      <form className="auth-form" onSubmit={onSubmit}>
+        {isRegister && <label>Full name<input required value={form.name} onChange={(event) => onChange('name', event.target.value)} placeholder="Your name" /></label>}
+        <label>Email address<input required type="email" value={form.email} onChange={(event) => onChange('email', event.target.value)} placeholder="you@company.com" /></label>
+        <label>Password<input required type="password" minLength="6" value={form.password} onChange={(event) => onChange('password', event.target.value)} placeholder="At least 6 characters" /></label>
+        {error && <p className="auth-error">{error}</p>}
+        <button className="button button-primary auth-submit" type="submit">{isRegister ? 'Create account' : 'Log in'} <ChevronRight size={15} /></button>
+      </form>
+      <p className="auth-switch">{isRegister ? 'Already have an account?' : 'New to DataPulse?'} <button onClick={() => onModeChange(isRegister ? 'login' : 'register')}>{isRegister ? 'Log in' : 'Create an account'}</button></p>
+      <small className="auth-note">Demo mode: account details stay in this browser only.</small>
+    </section>
+  </main>;
+}
+
+function Dashboard({ data, xAxisKey, barDataKey, lineDataKey, numericKeys, categoryData, total, average, trend }) {
+  return <div className="dashboard animate-in">
+    <div className="dashboard-intro"><div><div className="eyebrow"><BarChart3 size={14} /> DATA OVERVIEW</div><h2>Your data, at a glance</h2><p>Explore patterns, trends, and signals from your latest dataset.</p></div><div className="date-chip"><Activity size={15} /> Live analysis</div></div>
+    <div className="stat-grid">
+      <StatCard label="Total records" value={data.length.toLocaleString()} note="Rows analyzed" icon={Table2} color="teal" />
+      <StatCard label={`Total ${barDataKey}`} value={formatValue(total)} note="Across all records" icon={BarChart3} color="blue" />
+      <StatCard label={`Average ${barDataKey}`} value={formatValue(Math.round(average))} note="Per record" icon={Activity} color="orange" />
+      <StatCard label="Latest movement" value={`${trend >= 0 ? '+' : '-'}${formatValue(Math.abs(trend))}`} note={trend >= 0 ? 'Positive change' : 'Needs attention'} icon={trend >= 0 ? ArrowUpRight : ArrowDownRight} color={trend >= 0 ? 'green' : 'red'} />
+    </div>
+    <div className="section-heading"><div><h3>Visualizations</h3><p>Five views generated from your mapped fields</p></div><span className="mapping-label">{xAxisKey} · {numericKeys.join(' · ')}</span></div>
+    <div className="chart-grid">
+      <ChartCard title="Performance by category" subtitle={`${barDataKey} and ${lineDataKey}`}><ResponsiveContainer><BarChart data={data}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e8edf1" /><XAxis dataKey={xAxisKey} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#788896' }} /><YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#788896' }} /><Tooltip contentStyle={tooltipStyle} /><Legend iconType="circle" /><Bar dataKey={barDataKey} fill="#5b7cfa" radius={[5, 5, 0, 0]} /><Bar dataKey={lineDataKey} fill="#a9d9d1" radius={[5, 5, 0, 0]} /></BarChart></ResponsiveContainer></ChartCard>
+      <ChartCard title="Trend over time" subtitle={`Movement in ${lineDataKey}`}><ResponsiveContainer><LineChart data={data}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e8edf1" /><XAxis dataKey={xAxisKey} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#788896' }} /><YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#788896' }} /><Tooltip contentStyle={tooltipStyle} /><Line type="monotone" dataKey={lineDataKey} stroke="#249b8b" strokeWidth={3} dot={{ fill: '#249b8b', r: 3 }} /></LineChart></ResponsiveContainer></ChartCard>
+      <ChartCard title="Cumulative area" subtitle={`Volume of ${barDataKey}`}><ResponsiveContainer><AreaChart data={data}><defs><linearGradient id="pulseGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#5b7cfa" stopOpacity=".3" /><stop offset="100%" stopColor="#5b7cfa" stopOpacity=".02" /></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e8edf1" /><XAxis dataKey={xAxisKey} tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#788896' }} /><YAxis tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: '#788896' }} /><Tooltip contentStyle={tooltipStyle} /><Area type="monotone" dataKey={barDataKey} stroke="#5b7cfa" fill="url(#pulseGradient)" strokeWidth={2.5} /></AreaChart></ResponsiveContainer></ChartCard>
+      <ChartCard title="Category mix" subtitle={`Distribution of ${xAxisKey}`}><ResponsiveContainer><PieChart><Pie data={categoryData} dataKey="value" nameKey="name" cx="50%" cy="48%" innerRadius={48} outerRadius={80} paddingAngle={3}>{categoryData.map((entry, index) => <Cell key={entry.name} fill={palette[index % palette.length]} />)}</Pie><Tooltip contentStyle={tooltipStyle} /><Legend iconType="circle" wrapperStyle={{ fontSize: 11 }} /></PieChart></ResponsiveContainer></ChartCard>
+      <ChartCard title="Metric correlation" subtitle={`${barDataKey} vs ${lineDataKey}`}><ResponsiveContainer><ScatterChart><CartesianGrid strokeDasharray="3 3" stroke="#e8edf1" /><XAxis type="number" dataKey={barDataKey} name={barDataKey} tick={{ fontSize: 11, fill: '#788896' }} /><YAxis type="number" dataKey={lineDataKey} name={lineDataKey} tick={{ fontSize: 11, fill: '#788896' }} /><Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={tooltipStyle} /><Scatter name="Records" data={data} fill="#f2a65a" /></ScatterChart></ResponsiveContainer></ChartCard>
+    </div>
+    <div className="section-heading insights-heading"><div><h3>Automated insights</h3><p>Signals detected from your data</p></div><span className="insight-count"><Sparkles size={14} /> 3 insights</span></div>
+    <InsightCards data={data} barDataKey={barDataKey} lineDataKey={lineDataKey} average={average} trend={trend} />
+  </div>;
+}
+
+function ChartCard({ title, subtitle, children }) { return <div className="chart-card"><div className="chart-title"><div><h4>{title}</h4><p>{subtitle}</p></div><button className="icon-button"><ChevronRight size={16} /></button></div><div className="chart-area">{children}</div></div>; }
+function StatCard({ label, value, note, icon: Icon, color }) { return <div className="stat-card"><div><p>{label}</p><strong>{value}</strong><small><span className={`trend ${color}`}>{color === 'red' ? '↓' : '↑'}</span>{note}</small></div><div className={`stat-icon ${color}`}><Icon size={19} /></div></div>; }
+function InsightCards({ data, barDataKey, lineDataKey, average, trend }) {
+  const peak = data.reduce((best, row) => Number(row[barDataKey]) > Number(best?.[barDataKey] || 0) ? row : best, data[0]);
+  return <div className="insight-grid"><div className="insight-card teal"><div className="insight-icon"><ArrowUpRight size={17} /></div><div><strong>Latest movement</strong><p>{barDataKey} is {trend >= 0 ? 'up' : 'down'} by <b>{formatValue(Math.abs(trend))}</b> in the latest period.</p></div></div><div className="insight-card blue"><div className="insight-icon"><Sparkles size={17} /></div><div><strong>Top performer</strong><p><b>{peak?.[barDataKey] ? formatValue(peak[barDataKey]) : 'No value'}</b> is the highest recorded {barDataKey} value.</p></div></div><div className="insight-card orange"><div className="insight-icon"><Users size={17} /></div><div><strong>Typical record</strong><p>The average {lineDataKey} is <b>{formatValue(Math.round(average))}</b> across {data.length} records.</p></div></div></div>;
 }
